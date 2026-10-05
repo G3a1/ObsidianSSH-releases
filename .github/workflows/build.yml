@@ -1,0 +1,51 @@
+# Builds the Windows installer of the PRIVATE code repo (G3a1/ObsidianSSH) here, in a public repo, where Actions minutes are free,
+# and publishes it as a release of this repo (the installed apps read latest.json from here).
+# Start it with: gh workflow run build.yml --repo G3a1/ObsidianSSH-releases -f version=0.1.2   (scripts/release.sh does it)
+# Secrets of this repo: SOURCE_TOKEN (fine-grained token, Contents: read-only on G3a1/ObsidianSSH) and TAURI_SIGNING_PRIVATE_KEY.
+name: Build and publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the v (the tag v<version> must exist in G3a1/ObsidianSSH)'
+        required: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: G3a1/ObsidianSSH
+          ref: v${{ inputs.version }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Frontend assets
+        run: |
+          npm ci
+          npm run vendor
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        with:
+          tagName: v${{ inputs.version }}
+          releaseName: 'Obsidian SSH v${{ inputs.version }}'
+          releaseDraft: false
+          includeUpdaterJson: true
